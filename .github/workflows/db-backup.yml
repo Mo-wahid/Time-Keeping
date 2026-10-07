@@ -1,0 +1,28 @@
+name: Supabase DB Backup
+on:
+  schedule:
+    - cron: '0 3 * * 0' # Every Sunday at 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Run pg_dump
+        run: |
+          if [ -n "${{ secrets.SUPABASE_DB_URL }}" ]; then
+            pg_dump "${{ secrets.SUPABASE_DB_URL }}" > backup.sql
+            gzip backup.sql
+          else
+            echo "SUPABASE_DB_URL not configured. Skipping dump."
+          fi
+      - name: Upload Backup Artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supabase-backup-${{ github.run_number }}
+          path: backup.sql.gz
+          retention-days: 30
