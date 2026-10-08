@@ -24,6 +24,7 @@ import {
   Building,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { PWAInstallCard } from '@/components/pwa-install-card';
 
 interface SettingsClientProps {
   profile: any;
@@ -378,6 +379,9 @@ export function SettingsClient({
           </div>
         </CardContent>
       </Card>
+
+      {/* PWA Install Affordance */}
+      <PWAInstallCard />
 
       {/* 3. Notifications & Appearance */}
       <Card className="border-border bg-card/60 backdrop-blur-xs">
