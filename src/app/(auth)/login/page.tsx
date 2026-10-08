@@ -28,7 +28,15 @@ export default function LoginPage() {
       });
       if (error) throw error;
     } catch (err: any) {
-      toast.error(err.message || `Failed to sign in with ${provider}`);
+      const msg = err?.message || err?.msg || '';
+      if (msg.toLowerCase().includes('not enabled') || msg.toLowerCase().includes('unsupported provider')) {
+        toast.error(
+          `${provider === 'google' ? 'Google' : 'GitHub'} sign-in is not enabled in your Supabase project yet. Enable it in Supabase Dashboard (Auth → Providers), or sign in with Email & Password below.`,
+          { duration: 7000 }
+        );
+      } else {
+        toast.error(msg || `Failed to sign in with ${provider}`);
+      }
       setIsSubmitting(false);
     }
   };

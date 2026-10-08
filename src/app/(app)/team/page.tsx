@@ -37,11 +37,39 @@ export default async function TeamPage() {
   }
   const workspaceId = workspace?.id;
 
-  // 2. Get all members of the workspace
-  const { data: members }: any = await supabase
-    .from('workspace_members')
-    .select('user_id, role, profiles(*)')
-    .eq('workspace_id', workspaceId);
+  const weekStartStr = getWeekStartDateString();
+
+  // 2. Fetch members, week sessions, feed sessions, and feed reflections in parallel
+  const [
+    { data: members },
+    { data: weekSessions },
+    { data: feedSessions },
+    { data: feedReflections },
+  ]: any = await Promise.all([
+    supabase
+      .from('workspace_members')
+      .select('user_id, role, profiles(*)')
+      .eq('workspace_id', workspaceId),
+    supabase
+      .from('sessions')
+      .select('user_id, total_seconds, started_at')
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'completed')
+      .gte('started_at', `${weekStartStr}T00:00:00Z`),
+    supabase
+      .from('sessions')
+      .select('*, reactions(*)')
+      .eq('workspace_id', workspaceId)
+      .eq('status', 'completed')
+      .order('ended_at', { ascending: false })
+      .limit(20),
+    supabase
+      .from('weekly_reflections')
+      .select('*, reactions(*)')
+      .eq('workspace_id', workspaceId)
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ]);
 
   const memberMap = new Map<string, { name: string; avatar?: string | null }>();
   (members || []).forEach((m: any) => {
@@ -55,16 +83,8 @@ export default async function TeamPage() {
   const memberNames = Array.from(memberMap.values()).map((m) => m.name);
 
   // 3. Prepare side-by-side bar chart data for this week (Mon -> Sun)
-  const weekStartStr = getWeekStartDateString();
   const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-  const { data: weekSessions }: any = await supabase
-    .from('sessions')
-    .select('user_id, total_seconds, started_at')
-    .eq('workspace_id', workspaceId)
-    .eq('status', 'completed')
-    .gte('started_at', `${weekStartStr}T00:00:00Z`);
 
   const barsData = dayNames.map((dayName, idx) => {
     const targetDate = addDays(monday, idx);
@@ -89,23 +109,6 @@ export default async function TeamPage() {
 
     return entry as any;
   });
-
-  // 4. Fetch recent sessions for activity feed (limit 25)
-  const { data: feedSessions }: any = await supabase
-    .from('sessions')
-    .select('*, reactions(*)')
-    .eq('workspace_id', workspaceId)
-    .eq('status', 'completed')
-    .order('ended_at', { ascending: false })
-    .limit(20);
-
-  // 5. Fetch reflections for feed
-  const { data: feedReflections }: any = await supabase
-    .from('weekly_reflections')
-    .select('*, reactions(*)')
-    .eq('workspace_id', workspaceId)
-    .order('created_at', { ascending: false })
-    .limit(10);
 
   // Format feed items
   const feedItems: FeedItem[] = [];
