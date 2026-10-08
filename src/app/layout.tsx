@@ -67,12 +67,17 @@ export default function RootLayout({
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
             __html: `
-              if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
-                window.addEventListener('load', () => {
+              if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+                const register = () => {
                   navigator.serviceWorker.register('/sw.js').catch(err => {
-                    console.log('SW registration failed:', err);
+                    console.debug('SW registration failed:', err);
                   });
-                });
+                };
+                if (document.readyState === 'complete') {
+                  register();
+                } else {
+                  window.addEventListener('load', register);
+                }
               }
             `,
           }}

@@ -1,34 +1,25 @@
 import React from 'react';
+import { redirect } from 'next/navigation';
 import { createServerSupabase } from '@/lib/supabase/server';
-import { GoalCard } from '@/components/goal-card';
-import { ReflectionForm } from '@/components/reflection-form';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { getCurrentUser, getActiveWorkspace } from '@/lib/supabase/cached';
 import { getWeekStartDateString } from '@/lib/utils';
 import { GoalsClient } from './goals-client';
-import { Target, Flame, Trophy, Calendar } from 'lucide-react';
+import { subWeeks, format, parseISO } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
 export default async function GoalsPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+
+  const activeWs = await getActiveWorkspace(user.id);
+  const workspaceId = activeWs?.workspaceId;
+  if (!workspaceId) redirect('/settings');
+
   const supabase = await createServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
-
-  // 1. Get workspace
-  const { data: memberRows }: any = await supabase
-    .from('workspace_members')
-    .select('workspace_id')
-    .eq('user_id', user.id)
-    .limit(1);
-
-  const workspaceId = memberRows?.[0]?.workspace_id;
   const currentWeekStart = getWeekStartDateString();
 
-  // 2. Fetch this week's sessions, goals, past streaks, and reflection in parallel
+  // Fetch this week's sessions, goals, past streaks, and reflection in parallel
   const [
     { data: weekSessions },
     { data: rawGoals },
@@ -55,7 +46,8 @@ export default async function GoalsPage() {
       .eq('user_id', user.id)
       .eq('workspace_id', workspaceId)
       .eq('status', 'completed')
-      .order('week_start', { ascending: false }),
+      .order('week_start', { ascending: false })
+      .limit(52),
     supabase
       .from('weekly_reflections')
       .select('*')
@@ -65,15 +57,15 @@ export default async function GoalsPage() {
       .maybeSingle(),
   ]);
 
-  const currentWeekHours = Number(
-    (
-      (weekSessions || []).reduce((sum: number, s: any) => sum + (s.total_seconds || 0), 0) /
-      3600
-    ).toFixed(1)
+  // Compute current week actuals
+  const currentWeekSeconds = (weekSessions || []).reduce(
+    (sum: number, s: any) => sum + (s.total_seconds || 0),
+    0
   );
+  const currentWeekHours = +(currentWeekSeconds / 3600).toFixed(1);
   const currentWeekSessionCount = weekSessions?.length || 0;
 
-  // Update computed current values for hours & sessions goals
+  // Auto-update 'hours' and 'sessions' goals based on actuals
   const goals = (rawGoals || []).map((g: any) => {
     if (g.type === 'hours') {
       return {
@@ -95,9 +87,25 @@ export default async function GoalsPage() {
     return g;
   });
 
-  // Calculate streak (past weeks with at least one completed goal)
+  // Calculate true consecutive weekly streak
   const completedWeeks = new Set((pastCompletedGoals || []).map((g: any) => g.week_start));
-  let streakCount = completedWeeks.has(currentWeekStart) ? 1 : 0;
+  let streakCount = 0;
+  let checkDate = parseISO(currentWeekStart);
+
+  // If current week has a completed goal, count it as part of streak
+  if (completedWeeks.has(currentWeekStart)) {
+    streakCount++;
+    checkDate = subWeeks(checkDate, 1);
+  } else {
+    // Current week still in progress without completion; test prior week to maintain active streak
+    checkDate = subWeeks(checkDate, 1);
+  }
+
+  // Iterate backwards through consecutive weeks
+  while (completedWeeks.has(format(checkDate, 'yyyy-MM-dd'))) {
+    streakCount++;
+    checkDate = subWeeks(checkDate, 1);
+  }
 
   return (
     <GoalsClient

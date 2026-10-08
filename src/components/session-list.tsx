@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,7 +40,7 @@ interface SessionListProps {
   title?: string;
 }
 
-export function SessionList({
+export const SessionList = memo(function SessionList({
   sessions,
   workspaceId,
   title = "Today's Sessions",
@@ -319,4 +319,4 @@ export function SessionList({
       )}
     </div>
   );
-}
+});

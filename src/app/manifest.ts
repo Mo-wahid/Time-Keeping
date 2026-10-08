@@ -6,10 +6,13 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'Sproj',
     description: 'Track study sessions and stay accountable with your partner in real time.',
     start_url: '/today',
+    scope: '/',
+    id: '/',
     display: 'standalone',
     background_color: '#09090b',
     theme_color: '#09090b',
     orientation: 'portrait-primary',
+    categories: ['productivity', 'utilities'],
     icons: [
       {
         src: '/icons/icon-192.png',

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { GoalCard } from '@/components/goal-card';
 import { ReflectionForm } from '@/components/reflection-form';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +46,7 @@ export function GoalsClient({
   currentWeekSessions,
   initialReflection,
 }: GoalsClientProps) {
+  const router = useRouter();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -71,6 +73,7 @@ export function GoalsClient({
       setIsAddOpen(false);
       setTitle('');
       setTarget(20);
+      router.refresh();
     } catch (err: any) {
       toast.error(err.message || 'Failed to add goal');
     } finally {

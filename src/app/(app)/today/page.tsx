@@ -1,5 +1,7 @@
 import React from 'react';
+import { redirect } from 'next/navigation';
 import { createServerSupabase } from '@/lib/supabase/server';
+import { getCurrentUser, getActiveWorkspace, getUserProfile } from '@/lib/supabase/cached';
 import { TodayClient } from './today-client';
 import { getWeekStartDateString } from '@/lib/utils';
 import { startOfDay, endOfDay } from 'date-fns';
@@ -7,47 +9,37 @@ import { startOfDay, endOfDay } from 'date-fns';
 export const dynamic = 'force-dynamic';
 
 export default async function TodayPage() {
-  const supabase = await createServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
 
-  if (!user) return null;
+  const [activeWs, profile] = await Promise.all([
+    getActiveWorkspace(user.id),
+    getUserProfile(user.id),
+  ]);
 
-  // 1. Get workspace membership
-  const { data: memberRows }: any = await supabase
-    .from('workspace_members')
-    .select('workspace_id, workspaces(*)')
-    .eq('user_id', user.id)
-    .limit(1);
-
-  let workspace = memberRows?.[0]?.workspaces as any;
-  if (!workspace) {
-    const { data: wsRows }: any = await supabase
-      .from('workspaces')
-      .select('*')
-      .eq('created_by', user.id)
-      .limit(1);
-    workspace = wsRows?.[0];
+  const workspaceId = activeWs?.workspaceId;
+  if (!workspaceId) {
+    redirect('/settings');
   }
-  const workspaceId = workspace?.id;
 
+  const supabase = await createServerSupabase();
   const startOfToday = startOfDay(new Date()).toISOString();
   const endOfToday = endOfDay(new Date()).toISOString();
-  const weekStart = getWeekStartDateString();
+  const weekStart = getWeekStartDateString(
+    new Date(),
+    profile?.week_start === 0 ? 0 : 1
+  );
 
-  // 2. Fetch profile, partner, today's sessions, weekly progress, and goal in parallel
+  // Fetch partner, today's sessions, weekly progress, and goal in parallel
   const [
-    { data: profile },
     { data: otherMembers },
     { data: todaySessions },
     { data: weekSessions },
     { data: hoursGoal },
   ]: any = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', user.id).single(),
     supabase
       .from('workspace_members')
-      .select('user_id, profiles(*)')
+      .select('user_id, profiles(id, full_name, avatar_url)')
       .eq('workspace_id', workspaceId)
       .neq('user_id', user.id)
       .limit(1),

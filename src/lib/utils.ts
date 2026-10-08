@@ -8,7 +8,11 @@ export function cn(...inputs: ClassValue[]) {
 
 /** Formats total seconds into HH:MM:SS or MM:SS */
 export function formatDuration(totalSeconds: number, includeHours = true): string {
-  if (totalSeconds < 0 || isNaN(totalSeconds)) totalSeconds = 0;
+  if (totalSeconds < 0 || isNaN(totalSeconds)) {
+    totalSeconds = 0;
+  } else {
+    totalSeconds = Math.floor(totalSeconds);
+  }
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;

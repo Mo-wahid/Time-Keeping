@@ -1,21 +1,14 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, memo } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Goal } from '@/lib/types';
 import { toggleGoalStatus, deleteGoal } from '@/actions/goals';
-import {
-  CheckCircle2,
-  Circle,
-  Clock,
-  Flame,
-  ListTodo,
-  Trash2,
-  TrendingUp,
-} from 'lucide-react';
+import { CheckCircle2, Circle, Flame, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface GoalCardProps {
@@ -23,7 +16,8 @@ interface GoalCardProps {
   streakCount?: number;
 }
 
-export function GoalCard({ goal, streakCount }: GoalCardProps) {
+export const GoalCard = memo(function GoalCard({ goal, streakCount }: GoalCardProps) {
+  const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
   const isCompleted = goal.status === 'completed';
 
@@ -31,6 +25,7 @@ export function GoalCard({ goal, streakCount }: GoalCardProps) {
     try {
       await toggleGoalStatus(goal.id);
       toast.success(isCompleted ? 'Goal marked active' : 'Goal completed! Nice work!');
+      router.refresh();
     } catch (err: any) {
       toast.error('Failed to update goal');
     }
@@ -42,6 +37,7 @@ export function GoalCard({ goal, streakCount }: GoalCardProps) {
       setIsDeleting(true);
       await deleteGoal(goal.id);
       toast.success('Goal removed');
+      router.refresh();
     } catch (err: any) {
       toast.error('Failed to delete goal');
     } finally {
@@ -71,6 +67,9 @@ export function GoalCard({ goal, streakCount }: GoalCardProps) {
             {/* Toggle Status Checkbox Button */}
             <button
               onClick={handleToggle}
+              role="checkbox"
+              aria-checked={isCompleted}
+              aria-label={isCompleted ? `Mark ${goal.title} active` : `Mark ${goal.title} completed`}
               className="mt-0.5 text-muted-foreground hover:text-emerald-500 shrink-0 transition-all hover:scale-110 cursor-pointer p-0.5 rounded"
             >
               {isCompleted ? (
@@ -109,6 +108,7 @@ export function GoalCard({ goal, streakCount }: GoalCardProps) {
             size="icon"
             onClick={handleDelete}
             disabled={isDeleting}
+            aria-label={`Delete ${goal.title}`}
             className="h-7 w-7 text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -135,4 +135,4 @@ export function GoalCard({ goal, streakCount }: GoalCardProps) {
       </CardContent>
     </Card>
   );
-}
+});

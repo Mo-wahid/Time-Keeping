@@ -65,9 +65,9 @@ export function TeamBars({ data, userNames }: TeamBarsProps) {
                     return (
                       <div className="rounded-lg border border-border bg-background p-2.5 shadow-md text-xs">
                         <p className="font-semibold mb-1 text-foreground">{label}</p>
-                        {payload.map((entry, index) => (
+                        {payload.map((entry) => (
                           <div
-                            key={`item-${index}`}
+                            key={String(entry.dataKey || entry.name)}
                             className="flex items-center justify-between gap-4 py-0.5"
                           >
                             <span className="flex items-center gap-1.5 text-muted-foreground">

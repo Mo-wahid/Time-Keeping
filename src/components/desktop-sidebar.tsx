@@ -61,7 +61,7 @@ export function DesktopSidebar({
   };
 
   return (
-    <aside className="hidden md:flex flex-col w-64 border-r border-border bg-card/40 backdrop-blur-md h-screen sticky top-0 shrink-0">
+    <aside className="hidden md:flex flex-col w-64 border-r border-border bg-card/40 backdrop-blur-md h-dvh sticky top-0 shrink-0">
       {/* Workspace Brand / Header */}
       <div className="p-4 border-b border-border/70 space-y-2">
         <div className="flex items-center justify-between">
@@ -78,6 +78,7 @@ export function DesktopSidebar({
             variant="ghost"
             size="icon"
             onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            aria-label="Toggle dark or light theme"
             className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
           >
             {mounted && theme === 'dark' ? (
@@ -115,7 +116,7 @@ export function DesktopSidebar({
       </div>
 
       {/* Nav List */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav aria-label="Sidebar Navigation" className="flex-1 p-3 space-y-1">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = pathname.startsWith(item.href);
@@ -124,6 +125,7 @@ export function DesktopSidebar({
             <Link
               key={item.href}
               href={item.href}
+              aria-current={isActive ? 'page' : undefined}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
                 isActive
                   ? 'bg-primary/10 text-primary font-semibold'
@@ -157,6 +159,7 @@ export function DesktopSidebar({
               type="submit"
               variant="ghost"
               size="icon"
+              aria-label="Sign out"
               className="h-7 w-7 text-muted-foreground hover:text-destructive cursor-pointer"
               title="Sign Out"
             >

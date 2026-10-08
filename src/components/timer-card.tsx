@@ -21,7 +21,6 @@ import { FOCUS_TYPE_CONFIG, FOCUS_TYPES } from '@/lib/constants';
 import { FocusType } from '@/lib/types';
 import { formatDuration } from '@/lib/utils';
 import { Play, Pause, Square, Sparkles, Tag, CheckCircle2 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 
 interface TimerCardProps {
   workspaceId: string;
@@ -81,6 +80,7 @@ export function TimerCard({ workspaceId }: TimerCardProps) {
 
     // Trigger celebration confetti
     try {
+      const confetti = (await import('canvas-confetti')).default;
       confetti({
         particleCount: 80,
         spread: 60,

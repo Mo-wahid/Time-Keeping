@@ -1,47 +1,40 @@
 import React from 'react';
+import { redirect } from 'next/navigation';
 import { createServerSupabase } from '@/lib/supabase/server';
+import { getCurrentUser, getActiveWorkspace } from '@/lib/supabase/cached';
 import { CalendarHeatmap } from '@/components/calendar-heatmap';
 import { FocusBreakdownChart } from '@/components/focus-breakdown-chart';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FocusType } from '@/lib/types';
-import { formatDurationHuman, formatDate } from '@/lib/utils';
+import { formatDurationHuman } from '@/lib/utils';
 import { format, subDays } from 'date-fns';
 import { BarChart3, Download, Clock, Zap, BookOpen, Layers } from 'lucide-react';
-import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
 export default async function InsightsPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+
+  const activeWs = await getActiveWorkspace(user.id);
+  const workspaceId = activeWs?.workspaceId;
+  if (!workspaceId) redirect('/settings');
+
   const supabase = await createServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
-
-  // 1. Get workspace
-  const { data: memberRows }: any = await supabase
-    .from('workspace_members')
-    .select('workspace_id')
-    .eq('user_id', user.id)
-    .limit(1);
-
-  const workspaceId = memberRows?.[0]?.workspace_id;
-
-  // 2. Fetch all completed sessions for last 90 days
   const ninetyDaysAgo = subDays(new Date(), 90).toISOString();
 
+  // Narrow column selection: only fetch what's needed for metrics and charts
   const { data: sessions }: any = await supabase
     .from('sessions')
-    .select('*')
+    .select('started_at, total_seconds, focus_type')
     .eq('user_id', user.id)
     .eq('workspace_id', workspaceId)
     .eq('status', 'completed')
     .gte('started_at', ninetyDaysAgo)
     .order('started_at', { ascending: false });
 
-  // 3. Build daysData map for CalendarHeatmap
+  // Build daysData map for CalendarHeatmap
   const daysData: Record<string, { totalSeconds: number; sessionCount: number }> = {};
   let totalSecondsOverall = 0;
 

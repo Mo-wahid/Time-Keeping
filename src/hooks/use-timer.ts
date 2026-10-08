@@ -18,7 +18,11 @@ export interface ActiveTimerData {
   accumulatedSeconds: number;
 }
 
-export function useTimer(workspaceId: string) {
+export function useTimer(
+  workspaceId: string,
+  options: { runTicker?: boolean } = {}
+) {
+  const runTicker = options.runTicker ?? true;
   const supabase = createClient();
   const queryClient = useQueryClient();
   const [elapsed, setElapsed] = useState(0);
@@ -65,6 +69,7 @@ export function useTimer(workspaceId: string) {
 
   // Client-side ticking logic
   useEffect(() => {
+    if (!runTicker) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
 
     if (activeSession?.status === 'running' && activeSession.segmentStartedAt) {
@@ -76,6 +81,21 @@ export function useTimer(workspaceId: string) {
 
       tick();
       intervalRef.current = setInterval(tick, 1000);
+
+      const handleWake = () => {
+        if (!document.hidden) {
+          tick();
+        }
+      };
+
+      document.addEventListener('visibilitychange', handleWake);
+      window.addEventListener('focus', handleWake);
+
+      return () => {
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        document.removeEventListener('visibilitychange', handleWake);
+        window.removeEventListener('focus', handleWake);
+      };
     } else if (activeSession?.status === 'paused') {
       setElapsed(activeSession.accumulatedSeconds);
     } else {
@@ -91,8 +111,125 @@ export function useTimer(workspaceId: string) {
   useEffect(() => {
     const handleOnline = async () => {
       const flushed = await flushOfflineQueue(async (item) => {
-        return true;
+        try {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          if (!user) return false;
+
+          const now = new Date(item.timestamp).toISOString();
+
+          if (item.action === 'start') {
+            const { data: session, error } = await (supabase.from('sessions') as any)
+              .insert({
+                user_id: user.id,
+                workspace_id: item.payload.workspaceId || workspaceId,
+                intent: item.payload.intent,
+                focus_type: item.payload.focusType,
+                project_tag: item.payload.projectTag || null,
+                status: 'running',
+                source: 'timer',
+                started_at: item.payload.startedAt || now,
+              })
+              .select()
+              .single();
+
+            if (error || !session) return false;
+
+            await (supabase.from('session_segments') as any).insert({
+              session_id: session.id,
+              started_at: item.payload.startedAt || now,
+            });
+            return true;
+          }
+
+          if (item.action === 'pause') {
+            const sessionId = item.payload.sessionId;
+            if (!sessionId) return true;
+
+            const { data: seg } = await (supabase.from('session_segments') as any)
+              .select('id, started_at')
+              .eq('session_id', sessionId)
+              .is('ended_at', null)
+              .limit(1)
+              .maybeSingle();
+
+            if (seg) {
+              const segStartMs = new Date(seg.started_at).getTime();
+              const segSecs = Math.max(0, Math.floor((item.timestamp - segStartMs) / 1000));
+              await (supabase.from('session_segments') as any)
+                .update({ ended_at: now, duration_s: segSecs })
+                .eq('id', seg.id);
+            }
+
+            await (supabase.from('sessions') as any)
+              .update({ status: 'paused' })
+              .eq('id', sessionId);
+            return true;
+          }
+
+          if (item.action === 'resume') {
+            const sessionId = item.payload.sessionId;
+            if (!sessionId) return true;
+
+            await (supabase.from('session_segments') as any).insert({
+              session_id: sessionId,
+              started_at: now,
+            });
+
+            await (supabase.from('sessions') as any)
+              .update({ status: 'running' })
+              .eq('id', sessionId);
+            return true;
+          }
+
+          if (item.action === 'stop') {
+            const sessionId = item.payload.sessionId;
+            if (!sessionId) return true;
+
+            const { data: seg } = await (supabase.from('session_segments') as any)
+              .select('id, started_at')
+              .eq('session_id', sessionId)
+              .is('ended_at', null)
+              .limit(1)
+              .maybeSingle();
+
+            if (seg) {
+              const segStartMs = new Date(seg.started_at).getTime();
+              const segSecs = Math.max(0, Math.floor((item.timestamp - segStartMs) / 1000));
+              await (supabase.from('session_segments') as any)
+                .update({ ended_at: now, duration_s: segSecs })
+                .eq('id', seg.id);
+            }
+
+            const { data: allSegs } = await (supabase.from('session_segments') as any)
+              .select('duration_s')
+              .eq('session_id', sessionId);
+
+            const total = (allSegs || []).reduce(
+              (acc: number, s: any) => acc + (s.duration_s || 0),
+              0
+            );
+
+            await (supabase.from('sessions') as any)
+              .update({
+                status: 'completed',
+                ended_at: now,
+                total_seconds: total,
+                outcome: item.payload.outcome || null,
+                notes: item.payload.notes || null,
+              })
+              .eq('id', sessionId);
+            return true;
+          }
+
+          return true;
+        } catch (err) {
+          console.error('Error syncing offline item:', err);
+          return false;
+        }
       });
+
       if (flushed > 0) {
         toast.success(`Synced ${flushed} offline action(s)`);
         refetch();
@@ -101,7 +238,7 @@ export function useTimer(workspaceId: string) {
 
     window.addEventListener('online', handleOnline);
     return () => window.removeEventListener('online', handleOnline);
-  }, [refetch]);
+  }, [refetch, supabase, workspaceId]);
 
   const invalidate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: queryKeys.activeSession(workspaceId) });
@@ -303,6 +440,8 @@ export function useTimer(workspaceId: string) {
     intent: activeSession?.intent || '',
     focusType: (activeSession?.focusType as FocusType) || 'build',
     projectTag: activeSession?.projectTag || null,
+    segmentStartedAt: activeSession?.segmentStartedAt || null,
+    accumulatedSeconds: activeSession?.accumulatedSeconds || 0,
     isLoading,
     isSubmitting:
       startMutation.isPending ||

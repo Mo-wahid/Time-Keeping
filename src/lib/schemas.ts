@@ -19,16 +19,24 @@ export const stopSessionSchema = z.object({
   notes: z.string().max(10000).optional().nullable(),
 });
 
-export const backfillSessionSchema = z.object({
-  workspace_id: z.string().uuid(),
-  intent: z.string().min(1, 'Intent is required').max(200),
-  focus_type: focusTypeSchema,
-  started_at: z.string().datetime(),
-  ended_at: z.string().datetime(),
-  outcome: z.string().max(500).optional().nullable(),
-  notes: z.string().max(10000).optional().nullable(),
-  project_tag: z.string().max(50).optional().nullable(),
-});
+export const backfillSessionSchema = z
+  .object({
+    workspace_id: z.string().uuid(),
+    intent: z.string().min(1, 'Intent is required').max(200),
+    focus_type: focusTypeSchema,
+    started_at: z.string().datetime(),
+    ended_at: z.string().datetime(),
+    outcome: z.string().max(500).optional().nullable(),
+    notes: z.string().max(10000).optional().nullable(),
+    project_tag: z.string().max(50).optional().nullable(),
+  })
+  .refine(
+    (data) => new Date(data.ended_at).getTime() > new Date(data.started_at).getTime(),
+    {
+      message: 'End time must be after start time',
+      path: ['ended_at'],
+    }
+  );
 
 // ── Goal ──
 export const createGoalSchema = z.object({

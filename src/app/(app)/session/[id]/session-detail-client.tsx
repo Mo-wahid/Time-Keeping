@@ -49,6 +49,7 @@ export function SessionDetailClient({ session, isOwner }: SessionDetailClientPro
       setIsSaving(true);
       await updateSessionNotes(session.id, notes, outcome);
       toast.success('Session notes updated');
+      router.refresh();
     } catch (err: any) {
       toast.error(err.message || 'Failed to update notes');
     } finally {
@@ -73,6 +74,7 @@ export function SessionDetailClient({ session, isOwner }: SessionDetailClientPro
     try {
       await deleteAttachment(attachmentId, session.id);
       toast.success('Attachment removed');
+      router.refresh();
     } catch (err: any) {
       toast.error('Failed to remove attachment');
     }

@@ -1,8 +1,7 @@
 'use client';
 
-import React from 'react';
+import React, { memo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { formatDurationHuman } from '@/lib/utils';
 import { Target, TrendingUp } from 'lucide-react';
 
 interface WeeklyProgressRingProps {
@@ -10,7 +9,7 @@ interface WeeklyProgressRingProps {
   targetHours?: number;
 }
 
-export function WeeklyProgressRing({
+export const WeeklyProgressRing = memo(function WeeklyProgressRing({
   totalSeconds,
   targetHours = 20, // default 20 hrs target
 }: WeeklyProgressRingProps) {
@@ -51,7 +50,14 @@ export function WeeklyProgressRing({
         </div>
 
         {/* Circular SVG Ring */}
-        <div className="relative flex items-center justify-center shrink-0">
+        <div
+          role="progressbar"
+          aria-valuenow={percentage}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Weekly progress: ${percentage}% of ${targetHours} hours`}
+          className="relative flex items-center justify-center shrink-0"
+        >
           <svg width={size} height={size} className="transform -rotate-90">
             {/* Background Track */}
             <circle
@@ -73,7 +79,7 @@ export function WeeklyProgressRing({
               strokeDasharray={circumference}
               strokeDashoffset={strokeDashoffset}
               strokeLinecap="round"
-              className="text-emerald-500 transition-all duration-700 ease-out"
+              className="text-emerald-500 transition-[stroke-dashoffset] duration-700 ease-out motion-reduce:transition-none"
               fill="transparent"
             />
           </svg>
@@ -86,4 +92,4 @@ export function WeeklyProgressRing({
       </CardContent>
     </Card>
   );
-}
+});

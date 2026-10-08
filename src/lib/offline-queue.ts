@@ -5,6 +5,8 @@ export interface QueuedAction {
   action: 'start' | 'pause' | 'resume' | 'stop';
   payload: Record<string, any>;
   timestamp: number;
+  retryCount?: number;
+  lastError?: string;
 }
 
 const QUEUE_PREFIX = 'sproj-offline-action:';
@@ -15,6 +17,7 @@ export async function enqueueAction(action: Omit<QueuedAction, 'id' | 'timestamp
     ...action,
     id,
     timestamp: Date.now(),
+    retryCount: 0,
   };
   await set(`${QUEUE_PREFIX}${id}`, item);
   return id;
@@ -37,11 +40,17 @@ export async function getQueuedActions(): Promise<QueuedAction[]> {
   }
 }
 
+export async function updateQueuedAction(action: QueuedAction): Promise<void> {
+  await set(`${QUEUE_PREFIX}${action.id}`, action);
+}
+
 export async function removeQueuedAction(id: string): Promise<void> {
   await del(`${QUEUE_PREFIX}${id}`);
 }
 
-export async function flushOfflineQueue(
+const MAX_RETRIES = 3;
+
+async function executeQueueInternal(
   executor: (action: QueuedAction) => Promise<boolean | void>
 ): Promise<number> {
   const actions = await getQueuedActions();
@@ -54,13 +63,42 @@ export async function flushOfflineQueue(
         await removeQueuedAction(action.id);
         completed++;
       } else {
-        break; // Stop on failure
+        const retries = (action.retryCount || 0) + 1;
+        if (retries >= MAX_RETRIES) {
+          console.warn(`Dropping poison-pill action ${action.id} after ${retries} failed attempts.`);
+          await removeQueuedAction(action.id);
+        } else {
+          await updateQueuedAction({ ...action, retryCount: retries });
+          break; // Stop on retryable failure
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error executing queued action:', err);
-      break;
+      const retries = (action.retryCount || 0) + 1;
+      if (retries >= MAX_RETRIES) {
+        console.warn(`Dropping action ${action.id} after ${retries} fatal exceptions.`);
+        await removeQueuedAction(action.id);
+      } else {
+        await updateQueuedAction({
+          ...action,
+          retryCount: retries,
+          lastError: err?.message || String(err),
+        });
+        break;
+      }
     }
   }
 
   return completed;
+}
+
+export async function flushOfflineQueue(
+  executor: (action: QueuedAction) => Promise<boolean | void>
+): Promise<number> {
+  if (typeof navigator !== 'undefined' && 'locks' in navigator && (navigator as any).locks?.request) {
+    return await (navigator as any).locks.request('sproj-offline-queue-flush', async () => {
+      return await executeQueueInternal(executor);
+    });
+  }
+  return await executeQueueInternal(executor);
 }

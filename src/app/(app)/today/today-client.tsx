@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { TimerCard } from '@/components/timer-card';
 import { PartnerPresenceCard } from '@/components/partner-presence-card';
 import { WeeklyProgressRing } from '@/components/weekly-progress-ring';
@@ -34,20 +34,33 @@ export function TodayClient({
   weekTotalSeconds,
   weekTargetHours,
 }: TodayClientProps) {
-  const { status, intent, focusType, elapsed } = useTimer(workspaceId);
+  const { status, intent, focusType, segmentStartedAt, accumulatedSeconds } = useTimer(workspaceId, {
+    runTicker: false,
+  });
 
-  // My current state to broadcast via Supabase Realtime presence
-  const myPresenceState = {
-    user_id: currentUser.id,
-    full_name: currentUser.name,
-    avatar_url: currentUser.avatarUrl,
-    status: (status as 'running' | 'paused') || ('idle' as const),
-    intent,
-    focus_type: focusType,
-    elapsed_seconds: elapsed,
-    segment_started_at: status === 'running' ? new Date().toISOString() : null,
-    accumulated_seconds: elapsed,
-  };
+  // My current state to broadcast via Supabase Realtime presence - stable object, no 1Hz tick
+  const myPresenceState = useMemo(
+    () => ({
+      user_id: currentUser.id,
+      full_name: currentUser.name,
+      avatar_url: currentUser.avatarUrl,
+      status: (status as 'running' | 'paused') || ('idle' as const),
+      intent,
+      focus_type: focusType,
+      segment_started_at: segmentStartedAt,
+      accumulated_seconds: accumulatedSeconds,
+    }),
+    [
+      currentUser.id,
+      currentUser.name,
+      currentUser.avatarUrl,
+      status,
+      intent,
+      focusType,
+      segmentStartedAt,
+      accumulatedSeconds,
+    ]
+  );
 
   const onlineUsers = usePresence(workspaceId, myPresenceState);
 

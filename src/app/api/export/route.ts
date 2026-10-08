@@ -26,6 +26,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const privateCacheHeaders = {
+    'Cache-Control': 'private, no-cache, no-store, max-age=0, must-revalidate',
+    Pragma: 'no-cache',
+    Expires: '0',
+  };
+
   if (format === 'csv') {
     const headers = [
       'id',
@@ -39,9 +45,14 @@ export async function GET(request: Request) {
       'source',
     ];
 
+    // Mitigate CSV formula injection (CWE-1236)
     const escapeCsv = (val: any) => {
       if (val === null || val === undefined) return '""';
-      const str = String(val).replace(/"/g, '""');
+      let str = String(val);
+      if (str.length > 0 && /^[=+\-@\t\r]/.test(str)) {
+        str = `'${str}`;
+      }
+      str = str.replace(/"/g, '""');
       return `"${str}"`;
     };
 
@@ -63,6 +74,7 @@ export async function GET(request: Request) {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': 'attachment; filename="sproj-sessions.csv"',
+        ...privateCacheHeaders,
       },
     });
   }
@@ -70,6 +82,7 @@ export async function GET(request: Request) {
   return NextResponse.json(sessions, {
     headers: {
       'Content-Disposition': 'attachment; filename="sproj-sessions.json"',
+      ...privateCacheHeaders,
     },
   });
 }

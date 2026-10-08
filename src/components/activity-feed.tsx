@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -43,6 +43,10 @@ interface ActivityFeedProps {
 
 export function ActivityFeed({ items, currentUserId }: ActivityFeedProps) {
   const [feedItems, setFeedItems] = useState<FeedItem[]>(items);
+
+  useEffect(() => {
+    setFeedItems(items);
+  }, [items]);
 
   const handleToggleReaction = async (
     targetId: string,
@@ -212,6 +216,8 @@ export function ActivityFeed({ items, currentUserId }: ActivityFeedProps) {
                   <button
                     key={r.emoji}
                     onClick={() => handleToggleReaction(item.id, item.type, r.emoji)}
+                    aria-label={`React with ${r.emoji}`}
+                    aria-pressed={r.hasReacted}
                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-all cursor-pointer ${
                       r.hasReacted
                         ? 'bg-primary/10 border-primary/40 text-primary font-medium hover:bg-primary/20'
@@ -226,7 +232,10 @@ export function ActivityFeed({ items, currentUserId }: ActivityFeedProps) {
                 {/* Emoji Picker Popover */}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <button className="h-6 w-6 rounded-full border border-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border text-xs cursor-pointer transition-all hover:scale-110">
+                    <button
+                      aria-label="Add reaction"
+                      className="h-6 w-6 rounded-full border border-border/60 flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted hover:border-border text-xs cursor-pointer transition-all hover:scale-110"
+                    >
                       <SmilePlus className="h-3 w-3" />
                     </button>
                   </PopoverTrigger>
@@ -235,6 +244,7 @@ export function ActivityFeed({ items, currentUserId }: ActivityFeedProps) {
                       <button
                         key={emoji}
                         onClick={() => handleToggleReaction(item.id, item.type, emoji)}
+                        aria-label={`Add ${emoji} reaction`}
                         className="h-7 w-7 rounded flex items-center justify-center hover:bg-muted text-sm transition-all hover:scale-125 cursor-pointer"
                       >
                         {emoji}

@@ -1,45 +1,32 @@
 import React from 'react';
+import { redirect } from 'next/navigation';
 import { createServerSupabase } from '@/lib/supabase/server';
+import { getCurrentUser, getActiveWorkspace } from '@/lib/supabase/cached';
 import { TeamBars } from '@/components/team-bars';
 import { ActivityFeed, FeedItem } from '@/components/activity-feed';
 import { Card, CardContent } from '@/components/ui/card';
 import { getWeekStartDateString } from '@/lib/utils';
 import { format, startOfWeek, addDays } from 'date-fns';
-import { Users, UserPlus, Sparkles } from 'lucide-react';
+import { Users, UserPlus } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
 
 export default async function TeamPage() {
+  const user = await getCurrentUser();
+  if (!user) redirect('/login');
+
+  const activeWs = await getActiveWorkspace(user.id);
+  const workspaceId = activeWs?.workspaceId;
+  const workspace = activeWs?.workspace;
+
+  if (!workspaceId) redirect('/settings');
+
   const supabase = await createServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) return null;
-
-  // 1. Get workspace
-  const { data: memberRows }: any = await supabase
-    .from('workspace_members')
-    .select('workspace_id, workspaces(*)')
-    .eq('user_id', user.id)
-    .limit(1);
-
-  let workspace = memberRows?.[0]?.workspaces as any;
-  if (!workspace) {
-    const { data: wsRows }: any = await supabase
-      .from('workspaces')
-      .select('*')
-      .eq('created_by', user.id)
-      .limit(1);
-    workspace = wsRows?.[0];
-  }
-  const workspaceId = workspace?.id;
-
   const weekStartStr = getWeekStartDateString();
 
-  // 2. Fetch members, week sessions, feed sessions, and feed reflections in parallel
+  // Fetch members, week sessions, feed sessions, and feed reflections in parallel
   const [
     { data: members },
     { data: weekSessions },
@@ -48,7 +35,7 @@ export default async function TeamPage() {
   ]: any = await Promise.all([
     supabase
       .from('workspace_members')
-      .select('user_id, role, profiles(*)')
+      .select('user_id, role, profiles(id, full_name, avatar_url)')
       .eq('workspace_id', workspaceId),
     supabase
       .from('sessions')
@@ -82,7 +69,7 @@ export default async function TeamPage() {
 
   const memberNames = Array.from(memberMap.values()).map((m) => m.name);
 
-  // 3. Prepare side-by-side bar chart data for this week (Mon -> Sun)
+  // Prepare side-by-side bar chart data for this week (Mon -> Sun)
   const monday = startOfWeek(new Date(), { weekStartsOn: 1 });
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -96,18 +83,21 @@ export default async function TeamPage() {
     });
 
     (weekSessions || []).forEach((sess: any) => {
-      if (sess.started_at?.startsWith(datePrefix)) {
-        const u = memberMap.get(sess.user_id);
-        if (u) {
-          const currentHours = (entry[u.name] as number) || 0;
-          entry[u.name] = Number(
-            (currentHours + (sess.total_seconds || 0) / 3600).toFixed(1)
-          );
+      if (sess.started_at) {
+        const sessLocalDate = format(new Date(sess.started_at), 'yyyy-MM-dd');
+        if (sessLocalDate === datePrefix) {
+          const u = memberMap.get(sess.user_id);
+          if (u) {
+            const currentHours = (entry[u.name] as number) || 0;
+            entry[u.name] = Number(
+              (currentHours + (sess.total_seconds || 0) / 3600).toFixed(1)
+            );
+          }
         }
       }
     });
 
-    return entry as any;
+    return entry;
   });
 
   // Format feed items
@@ -123,7 +113,7 @@ export default async function TeamPage() {
       if (!reactionCounts[r.emoji]) {
         reactionCounts[r.emoji] = { count: 0, hasReacted: false };
       }
-      reactionCounts[r.emoji].count++;
+      reactionCounts[r.emoji].count += 1;
       if (r.user_id === user.id) {
         reactionCounts[r.emoji].hasReacted = true;
       }
@@ -136,10 +126,10 @@ export default async function TeamPage() {
       userName: mem?.name || 'Member',
       userAvatar: mem?.avatar,
       timestamp: s.ended_at || s.started_at,
-      focusType: s.focus_type,
       intent: s.intent,
-      outcome: s.outcome,
+      focusType: s.focus_type,
       durationSeconds: s.total_seconds,
+      outcome: s.outcome,
       projectTag: s.project_tag,
       reactions: Object.entries(reactionCounts).map(([emoji, data]) => ({
         emoji,
@@ -154,13 +144,13 @@ export default async function TeamPage() {
     const reactions = r.reactions || [];
 
     const reactionCounts: Record<string, { count: number; hasReacted: boolean }> = {};
-    reactions.forEach((rec: any) => {
-      if (!reactionCounts[rec.emoji]) {
-        reactionCounts[rec.emoji] = { count: 0, hasReacted: false };
+    reactions.forEach((rItem: any) => {
+      if (!reactionCounts[rItem.emoji]) {
+        reactionCounts[rItem.emoji] = { count: 0, hasReacted: false };
       }
-      reactionCounts[rec.emoji].count++;
-      if (rec.user_id === user.id) {
-        reactionCounts[rec.emoji].hasReacted = true;
+      reactionCounts[rItem.emoji].count += 1;
+      if (rItem.user_id === user.id) {
+        reactionCounts[rItem.emoji].hasReacted = true;
       }
     });
 
@@ -210,7 +200,7 @@ export default async function TeamPage() {
                 </p>
               </div>
             </div>
-            <Button asChild size="sm" variant="outline" className="h-8 text-xs shrink-0">
+            <Button asChild size="sm" variant="outline" className="h-8 text-xs shrink-0 cursor-pointer">
               <Link href="/settings">Manage Workspace</Link>
             </Button>
           </CardContent>
@@ -218,7 +208,7 @@ export default async function TeamPage() {
       )}
 
       {/* Side-by-side weekly hours chart */}
-      <TeamBars data={barsData} userNames={memberNames} />
+      <TeamBars data={barsData as any} userNames={memberNames} />
 
       {/* Team Activity Feed */}
       <div className="space-y-3">

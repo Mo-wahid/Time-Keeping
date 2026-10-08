@@ -1,9 +1,11 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { createServerSupabase } from '@/lib/supabase/server';
+import { getCurrentUser, getUserProfile, getActiveWorkspace } from '@/lib/supabase/cached';
 import { DesktopSidebar } from '@/components/desktop-sidebar';
 import { MobileNav } from '@/components/mobile-nav';
 import { CommandPalette } from '@/components/command-palette';
+
 export const dynamic = 'force-dynamic';
 
 export default async function AppLayout({
@@ -11,28 +13,27 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createServerSupabase();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) {
     redirect('/login');
   }
 
-  // Get user profile
-  let { data: profile }: any = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', user.id)
-    .single();
+  // Fetch profile and active workspace in parallel with request-scoped caching
+  let [profile, activeWsResult] = await Promise.all([
+    getUserProfile(user.id),
+    getActiveWorkspace(user.id),
+  ]);
 
+  const supabase = await createServerSupabase();
+
+  // Handle rare first-time bootstrap if database triggers haven't populated profile
   if (!profile) {
-    // Fallback if trigger hasn't fired or during development
     const name = user.user_metadata?.full_name || user.email?.split('@')[0] || 'User';
-    await (supabase.from('profiles') as any).insert({
+    await (supabase.from('profiles') as any).upsert({
       id: user.id,
       full_name: name,
+      avatar_url: user.user_metadata?.avatar_url || null,
     });
     profile = {
       id: user.id,
@@ -45,20 +46,12 @@ export default async function AppLayout({
     };
   }
 
-  // Get user's active workspace membership
-  const { data: memberRows }: any = await supabase
-    .from('workspace_members')
-    .select('workspace_id, workspaces(*)')
-    .eq('user_id', user.id)
-    .limit(1);
+  let activeWorkspace = activeWsResult?.workspace;
 
-  let activeWorkspace = memberRows?.[0]?.workspaces as any;
-
-  // If user has no workspace yet, auto-create a default one
+  // Handle rare first-time workspace creation if not yet member of any workspace
   if (!activeWorkspace) {
     const defaultName = `${profile.full_name}'s Space`;
-    const { data: newWs } = await supabase
-      .from('workspaces')
+    const { data: newWs } = await (supabase.from('workspaces') as any)
       .insert({
         name: defaultName,
         created_by: user.id,
@@ -67,7 +60,7 @@ export default async function AppLayout({
       .single();
 
     if (newWs) {
-      await supabase.from('workspace_members').insert({
+      await (supabase.from('workspace_members') as any).insert({
         workspace_id: newWs.id,
         user_id: user.id,
         role: 'owner',

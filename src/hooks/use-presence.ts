@@ -23,9 +23,13 @@ export function usePresence(
   const supabase = createClient();
   const [users, setUsers] = useState<PresenceUser[]>([]);
   const channelRef = useRef<any>(null);
+  const isSubscribedRef = useRef(false);
 
   useEffect(() => {
     if (!workspaceId) return;
+
+    let isMounted = true;
+    isSubscribedRef.current = false;
 
     const channel = supabase.channel(`workspace:${workspaceId}`, {
       config: {
@@ -39,31 +43,50 @@ export function usePresence(
 
     channel
       .on('presence', { event: 'sync' }, () => {
+        if (!isMounted) return;
         const state = channel.presenceState<PresenceUser>();
         const flattened = Object.values(state).flat();
         setUsers(flattened);
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED' && myState) {
-          await channel.track({
-            ...myState,
-            online_at: new Date().toISOString(),
-          });
+        if (status === 'SUBSCRIBED') {
+          isSubscribedRef.current = true;
+          if (myState && isMounted) {
+            try {
+              await channel.track({
+                ...myState,
+                online_at: new Date().toISOString(),
+              });
+            } catch (err) {
+              console.debug('Initial presence track error:', err);
+            }
+          }
+        } else {
+          isSubscribedRef.current = false;
         }
       });
 
     return () => {
+      isMounted = false;
+      isSubscribedRef.current = false;
+      channelRef.current = null;
       supabase.removeChannel(channel);
     };
   }, [workspaceId, myState?.user_id]);
 
   // Update tracked state when status / intent / focus changes
   useEffect(() => {
-    if (channelRef.current && myState) {
-      channelRef.current.track({
-        ...myState,
-        online_at: new Date().toISOString(),
-      });
+    if (channelRef.current && isSubscribedRef.current && myState) {
+      try {
+        channelRef.current
+          .track({
+            ...myState,
+            online_at: new Date().toISOString(),
+          })
+          .catch((err: any) => console.debug('Presence track error:', err));
+      } catch (err) {
+        console.debug('Presence tracking error:', err);
+      }
     }
   }, [
     myState?.status,

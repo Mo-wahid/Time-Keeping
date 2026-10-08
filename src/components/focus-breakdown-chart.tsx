@@ -85,8 +85,8 @@ export function FocusBreakdownChart({ data }: FocusBreakdownChartProps) {
                 paddingAngle={4}
                 dataKey="value"
               >
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
+                {chartData.map((entry) => (
+                  <Cell key={entry.name || entry.focusType} fill={entry.color} />
                 ))}
               </Pie>
               <Tooltip
